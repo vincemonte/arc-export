@@ -173,14 +173,9 @@ def read_json() -> dict:
 
 
 def get_favorites(items: list):
-    '''
-    X1) Iterate through the items and find a match where the container type =topapps and the topApps=_0 and the _0 = default
-    X2) Get all of the children ids from the object 
-    3) Relate those children ids to their data 
-    4) Compose the data the same format that the convert_bookmarks_to_html expects
-    5) Connect
-    '''
-    children_ids=None
+    parent_id:str=None
+    items = [item for item in items if isinstance(item, dict)]
+
     for item in items:
         if not isinstance(item, dict):
             continue 
@@ -190,20 +185,29 @@ def get_favorites(items: list):
             .get("itemContainer", {})
             .get("containerType",{})
         )
+        # Terrible identifer but the only one I could deduce.
         if (
             "topApps" in container_type
             and "_0" in container_type.get("topApps", {})
             and "default" in container_type["topApps"]["_0"]
             and item.get("parentID") is None
         ):
-            children_ids:list = item.get("value").get("childrenIds")
-            logging.debug(f"Found favorites: {children_ids}")
+            parent_id = item.get("value").get("id")
+            logging.debug(f"Found parent id: {parent_id}")
             break
-    if not children_ids:
+    if not parent_id:
         return None
 
-    
-                
+    item_dict = {item.get("value", {}).get("id"): item.get("value", {}) for item in items if isinstance(item, dict) and "value" in item}
+
+    favorites_folder: dict = {
+            "title": "Favorites",
+            "type": "folder",
+            "children": recurse_into_children(parent_id=parent_id, items=item_dict),
+    }
+
+    return favorites_folder if favorites_folder else None 
+
 
             
 
@@ -220,7 +224,9 @@ def convert_json_to_html(json_data: dict) -> str:
 
     favorites: dict = get_favorites(json_data["sidebarSyncState"]["items"])
     bookmarks: dict = convert_to_bookmarks(spaces, items)
-    # we will append the new bookmarks right here.
+    
+    if favorites:
+        bookmarks["bookmarks"].insert(0, favorites)    # we will append the new bookmarks right here.
     html_content: str = convert_bookmarks_to_html(bookmarks)
 
     return html_content
@@ -258,46 +264,47 @@ def get_spaces(spaces: list) -> dict:
     return spaces_names
 
 
+# can we optimize the recursion at all ?
+def recurse_into_children(parent_id: str, items:dict) -> list:
+    
+    children: list = []
+    for item_id, item in items.items():
+        if item.get("parentID") == parent_id:
+            if "data" in item and "tab" in item["data"]:
+                children.append(
+                    {
+                        "title": item.get("title", None)
+                        or item["data"]["tab"].get("savedTitle", ""),
+                        "type": "bookmark",
+                        "url": item["data"]["tab"].get("savedURL", ""),
+                    }
+                )
+               #bookmarks_count += 1
+            elif "title" in item:
+                child_folder: dict = {
+                    "title": item["title"],
+                    "type": "folder",
+                    "children": recurse_into_children(item_id, items),
+                }
+                children.append(child_folder)
+    return children
+
 def convert_to_bookmarks(spaces: dict, items: list) -> dict:
     logging.info("Converting to bookmarks...")
 
     bookmarks: dict = {"bookmarks": []}
-    bookmarks_count: int = 0
+    #bookmarks_count: int = 0
     item_dict: dict = {item["id"]: item for item in items if isinstance(item, dict)}
-
-    def recurse_into_children(parent_id: str) -> list:
-        nonlocal bookmarks_count
-        children: list = []
-        for item_id, item in item_dict.items():
-            if item.get("parentID") == parent_id:
-                if "data" in item and "tab" in item["data"]:
-                    children.append(
-                        {
-                            "title": item.get("title", None)
-                            or item["data"]["tab"].get("savedTitle", ""),
-                            "type": "bookmark",
-                            "url": item["data"]["tab"].get("savedURL", ""),
-                        }
-                    )
-                    bookmarks_count += 1
-                elif "title" in item:
-                    child_folder: dict = {
-                        "title": item["title"],
-                        "type": "folder",
-                        "children": recurse_into_children(item_id),
-                    }
-                    children.append(child_folder)
-        return children
 
     for space_id, space_name in spaces["pinned"].items():
         space_folder: dict = {
             "title": space_name,
             "type": "folder",
-            "children": recurse_into_children(space_id),
+            "children": recurse_into_children(space_id, item_dict),
         }
         bookmarks["bookmarks"].append(space_folder)
 
-    logging.debug(f"Found {bookmarks_count} bookmarks.")
+    #logging.debug(f"Found {bookmarks_count} bookmarks.")
 
     return bookmarks
 
