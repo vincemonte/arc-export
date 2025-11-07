@@ -171,6 +171,43 @@ def read_json() -> dict:
     return data
 
 
+
+def get_favorites(items: list):
+    '''
+    X1) Iterate through the items and find a match where the container type =topapps and the topApps=_0 and the _0 = default
+    X2) Get all of the children ids from the object 
+    3) Relate those children ids to their data 
+    4) Compose the data the same format that the convert_bookmarks_to_html expects
+    5) Connect
+    '''
+    children_ids=None
+    for item in items:
+        if not isinstance(item, dict):
+            continue 
+        container_type = (
+            item.get("value",{})
+            .get("data", {})
+            .get("itemContainer", {})
+            .get("containerType",{})
+        )
+        if (
+            "topApps" in container_type
+            and "_0" in container_type.get("topApps", {})
+            and "default" in container_type["topApps"]["_0"]
+            and item.get("parentID") is None
+        ):
+            children_ids:list = item.get("value").get("childrenIds")
+            logging.debug(f"Found favorites: {children_ids}")
+            break
+    if not children_ids:
+        return None
+
+    
+                
+
+            
+
+
 def convert_json_to_html(json_data: dict) -> str:
     containers: list = json_data["sidebar"]["containers"]
     try:
@@ -181,7 +218,9 @@ def convert_json_to_html(json_data: dict) -> str:
     spaces: dict = get_spaces(json_data["sidebar"]["containers"][target]["spaces"])
     items: list = json_data["sidebar"]["containers"][target]["items"]
 
+    favorites: dict = get_favorites(json_data["sidebarSyncState"]["items"])
     bookmarks: dict = convert_to_bookmarks(spaces, items)
+    # we will append the new bookmarks right here.
     html_content: str = convert_bookmarks_to_html(bookmarks)
 
     return html_content
