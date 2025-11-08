@@ -281,8 +281,7 @@ def recurse_into_children(parent_id:str, items:dict) -> list:
                 url = item["data"]["tab"].get("savedURL", "")
                 bookmark = build_bookmark_entry(title, url)
                 children.append(bookmark)
-            
-               #bookmarks_count += 1
+        
             elif "title" in item:    
                 child_folder = build_folder_entry(title=item["title"], children=recurse_into_children(item_id, items))
                 children.append(child_folder)
@@ -292,14 +291,11 @@ def convert_to_bookmarks(spaces: dict, items: list) -> dict:
     logging.info("Converting to bookmarks...")
 
     bookmarks: dict = {"bookmarks": []}
-    #bookmarks_count: int = 0
     item_dict: dict = {item["id"]: item for item in items if isinstance(item, dict)}
 
     for space_id, space_name in spaces["pinned"].items():
         space_folder = build_folder_entry(title=space_name, children=recurse_into_children(space_id, item_dict))
         bookmarks["bookmarks"].append(space_folder)
-
-    #logging.debug(f"Found {bookmarks_count} bookmarks.")
 
     return bookmarks
 
