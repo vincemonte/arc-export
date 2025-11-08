@@ -127,7 +127,7 @@ def get_version() -> tuple[str, datetime]:
 def read_json() -> dict:
     logging.info("Reading JSON...")
 
-    filename: Path = Path("StorableSidebar.json")
+    filename: Path = Path("StorableSidebar.json") # Are we sure this is the most recent version of the file?
     if os.name == "nt":
         arc_root_parent_path: Path = Path(
             os.path.expanduser(r"~\AppData\Local\Packages")
@@ -200,17 +200,9 @@ def get_favorites(items: list):
 
     item_dict = {item.get("value", {}).get("id"): item.get("value", {}) for item in items if isinstance(item, dict) and "value" in item}
 
-    favorites_folder: dict = {
-            "title": "Favorites",
-            "type": "folder",
-            "children": recurse_into_children(parent_id=parent_id, items=item_dict),
-    }
+    favorites_folder = build_folder_entry(title="Favorites", children=recurse_into_children(parent_id=parent_id, items=item_dict))
 
-    return favorites_folder if favorites_folder else None 
-
-
-            
-
+    return favorites_folder
 
 def convert_json_to_html(json_data: dict) -> str:
     containers: list = json_data["sidebar"]["containers"]
@@ -263,29 +255,36 @@ def get_spaces(spaces: list) -> dict:
 
     return spaces_names
 
+def build_folder_entry(title:str="", children:list=None):
+    return {
+        "title": title or "Untitled", 
+        "type": "folder", 
+        "children": children or []
+    }
+
+def build_bookmark_entry(title:str="", url:str="")->dict:
+    if not url: 
+        raise ValueError("Bookmark URL can not be emptry ")
+    return {
+        "title": title or "Untitled", 
+        "type": "bookmark", 
+        "url": url
+    }
 
 # can we optimize the recursion at all ?
-def recurse_into_children(parent_id: str, items:dict) -> list:
-    
+def recurse_into_children(parent_id:str, items:dict) -> list:
     children: list = []
     for item_id, item in items.items():
         if item.get("parentID") == parent_id:
             if "data" in item and "tab" in item["data"]:
-                children.append(
-                    {
-                        "title": item.get("title", None)
-                        or item["data"]["tab"].get("savedTitle", ""),
-                        "type": "bookmark",
-                        "url": item["data"]["tab"].get("savedURL", ""),
-                    }
-                )
+                title =  item.get("title", None) or item["data"]["tab"].get("savedTitle", "")
+                url = item["data"]["tab"].get("savedURL", "")
+                bookmark = build_bookmark_entry(title, url)
+                children.append(bookmark)
+            
                #bookmarks_count += 1
-            elif "title" in item:
-                child_folder: dict = {
-                    "title": item["title"],
-                    "type": "folder",
-                    "children": recurse_into_children(item_id, items),
-                }
+            elif "title" in item:    
+                child_folder = build_folder_entry(title=item["title"], children=recurse_into_children(item_id, items))
                 children.append(child_folder)
     return children
 
@@ -297,11 +296,7 @@ def convert_to_bookmarks(spaces: dict, items: list) -> dict:
     item_dict: dict = {item["id"]: item for item in items if isinstance(item, dict)}
 
     for space_id, space_name in spaces["pinned"].items():
-        space_folder: dict = {
-            "title": space_name,
-            "type": "folder",
-            "children": recurse_into_children(space_id, item_dict),
-        }
+        space_folder = build_folder_entry(title=space_name, children=recurse_into_children(space_id, item_dict))
         bookmarks["bookmarks"].append(space_folder)
 
     #logging.debug(f"Found {bookmarks_count} bookmarks.")
